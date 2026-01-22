@@ -1,19 +1,18 @@
 import io.qameta.allure.Description;
-import io.qameta.allure.Step;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
+import model.order.OrderApi;
 import model.order.OrderModel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.stream.Stream;
 
-import static io.restassured.RestAssured.given;
-import static io.restassured.http.ContentType.JSON;
+import static org.apache.http.HttpStatus.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CreateOrderTests {
 
@@ -25,11 +24,11 @@ public class CreateOrderTests {
 
     @ParameterizedTest
     @MethodSource("colorData")
-    @DisplayName("Проверить, что можно указать один из цветов — BLACK или GREY") // имя теста
-    @Description("Проверить, что можно указать один из цветов — BLACK или GREY") // описание теста
-    public void createOrderWithOneColor(String clr, int code) {
-        String[] color = {clr};
-        //color.add("BLACK");
+    @DisplayName("Проверить, что можно указать любую комбинацию цветов") // имя теста
+    @Description("Проверить, что можно указать любую комбинацию цветов") // описание теста
+    public void createOrderAnyoneColorTest(String color1, String color2) {
+        String[] color = {color1, color2};
+        OrderApi orderApi = new OrderApi();
         OrderModel orderModel = new OrderModel(
                 "Иван",
                 "Иванов",
@@ -41,84 +40,23 @@ public class CreateOrderTests {
                 "С наступающим новым годом!",
                 color);
 
-       sendPostRequestOrder(orderModel).then().statusCode(code);
-    }
-@Test
-    @DisplayName("Проверить, что можно указать оба цвета") // имя теста
-    @Description("Проверить, что можно указать оба цвета") // описание теста
-    public void createOrderWithTwoColor() {
-        String[] color = {"BLACK","GRAY"};
-        //color.add("BLACK");
-        OrderModel orderModel = new OrderModel(
-                "Иван",
-                "Иванов",
-                "Мира, д.28",
-                "5",
-                "+7 495 555 44 22",
-                5,
-                "2025-12-12",
-                "С наступающим новым годом!",
-                color);
-
-        sendPostRequestOrder(orderModel).then().statusCode(201);
-    }
-    @Test
-    @DisplayName("Проверить, что можно совсем не указывать цвет") // имя теста
-    @Description("Проверить, что можно совсем не указывать цвет") // описание теста
-    public void createOrderWithoutColors() {
-        String[] color = {};
-        //color.add("BLACK");
-        OrderModel orderModel = new OrderModel(
-                "Иван",
-                "Иванов",
-                "Мира, д.28",
-                "5",
-                "+7 495 555 44 22",
-                5,
-                "2025-12-12",
-                "С наступающим новым годом!",
-                color);
-
-        sendPostRequestOrder(orderModel).then().statusCode(201);
+        Response response = orderApi.sendPostRequestOrder(orderModel);
+        response.then().statusCode(SC_CREATED);
+        assertTrue(response.path("track") != null);
     }
 
-    @Test
-    @DisplayName("Проверить, что можно совсем не указывать цвет") // имя теста
-    @Description("Проверить, что можно совсем не указывать цвет") // описание теста
-    public void returnOrderTrack() {
-        String[] color = {};
-        //color.add("BLACK");
-        OrderModel orderModel = new OrderModel(
-                "Иван",
-                "Иванов",
-                "Мира, д.28",
-                "5",
-                "+7 495 555 44 22",
-                5,
-                "2025-12-12",
-                "С наступающим новым годом!",
-                color);
-
-       int track = sendPostRequestOrder(orderModel).path("track");
-    }
 
     private static Stream<Arguments> colorData() {
         return Stream.of(
-                Arguments.of("BLACK", 201),
-                Arguments.of("GRAY",  201)
+                Arguments.of("BLACK", null),
+                Arguments.of(null, "GRAY"),
+                Arguments.of(null, null),
+                Arguments.of("BLACK", "GRAY")
 
 
         );
     }
 
-    @Step("Send POST request to /api/v1/orders")
-    public Response sendPostRequestOrder(OrderModel order) {
-        return given()
-                .contentType(JSON)
-                .and()
-                .body(order)
-                .when()
-                .post("/api/v1/orders");
-    }
+
 }
 

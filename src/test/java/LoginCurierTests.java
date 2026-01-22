@@ -3,8 +3,9 @@ import io.qameta.allure.Step;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import model.courier.Courier;
-import model.courier.CourierCreds;
-import model.courier.LoginWithoutLogin;
+import model.courier.CourierApi;
+import org.apache.http.HttpStatus;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,26 +15,30 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.stream.Stream;
 
-import static io.restassured.RestAssured.given;
-import static io.restassured.http.ContentType.JSON;
+import static org.apache.http.HttpStatus.*;
+
 import static model.courier.CourierData.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LoginCurierTests {
 
     @BeforeEach
     public void setUp() {
         RestAssured.baseURI = "https://qa-scooter.praktikum-services.ru/";
-        Courier courier = new Courier(NAME, PASSWORD, FIRST_NAME);
-        sendPostRequest(courier);
+
     }
 
     @Test
-    @DisplayName("Проверить, что курьер может авторизоваться") // имя теста
-    @Description("Проверить, что курьер может авторизоваться") // описание теста
-    public void authorizationCourier() {
-        CourierCreds courierCreds = new CourierCreds(NAME, PASSWORD);
-        sendPostRequestLogin(courierCreds).then().statusCode(200);
+    @DisplayName("Проверить, что курьер может авторизоваться и получить id") // имя теста
+    @Description("Проверить, что курьер может авторизоваться и получить id") // описание теста
+    public void authorizationCourierTest() {
+        CourierApi courierApi = new CourierApi();
+        Courier courier = new Courier(LOGIN, PASSWORD, FIRST_NAME);
+        courierApi.sendPostRequest(courier);
+        Response response = courierApi.sendPostRequestLogin(new Courier(LOGIN,PASSWORD,null));
+        response.then().statusCode(SC_OK);
+        assertTrue(response.path("id") != null);
 
     }
 
@@ -41,9 +46,12 @@ public class LoginCurierTests {
     @MethodSource("authorizationData")
     @DisplayName("Проверить, что для авторизации нужно передать все обязательные поля") // имя теста
     @Description("Проверить, что для авторизации нужно передать все обязательные поля") // описание теста
-    public void authorizationCourierWithField(String login, String password, int code) {
-        CourierCreds courierCreds = new CourierCreds(login, password);
-        sendPostRequestLogin(courierCreds).then().statusCode(code);
+    public void authorizationCourierWithFieldsTest(String login, String password) {
+        CourierApi courierApi = new CourierApi();
+        Courier courier = new Courier(login, password, null);
+        Response response = courierApi.sendPostRequestLogin(courier);
+        response.then().statusCode(SC_BAD_REQUEST);
+        assertEquals("Недостаточно данных для входа", response.path("message"));
 
     }
 
@@ -51,114 +59,38 @@ public class LoginCurierTests {
     @MethodSource("authorizationDataError")
     @DisplayName("Проверить, что система вернёт ошибку, если неправильно указать логин или пароль") // имя теста
     @Description("Проверить, что система вернёт ошибку, если неправильно указать логин или пароль") // описание теста
-    public void authorizationCourierError(String login, String password, int code) {
-        CourierCreds courierCreds = new CourierCreds(login, password);
-        sendPostRequestLogin(courierCreds).then().statusCode(code);
-    }
-
-    @Test
-    @DisplayName("Проверить, что если какого-то поля нет, запрос возвращает ошибку") // имя теста
-    @Description("Проверить, что если какого-то поля нет, запрос возвращает ошибку") // описание теста
-    public void authorizationCourierErrorWithoutFiealds() {
-        LoginWithoutLogin login = new LoginWithoutLogin(PASSWORD);
-        assertEquals(400, sendPostRequestLogin(login).statusCode());
-    }
-
-    @Test
-    @DisplayName("Проверить, что если авторизоваться под несуществующим пользователем, запрос возвращает ошибку")
-    // имя теста
-    @Description("Проверить, что если авторизоваться под несуществующим пользователем, запрос возвращает ошибку")
-    // описание теста
-    public void authorizationCourierNotExisting() {
-        CourierCreds courierCreds = new CourierCreds(NAME_2, PASSWORD_2);
-        sendPostRequestLogin(courierCreds).then().statusCode(404);
-    }
-
-    @Test
-    @DisplayName("Проверить, что успешный запрос возвращает id") // имя теста
-    @Description("Проверить, что успешный запрос возвращает id") // описание теста
-    public void authorizationCourierReturnId() {
-        CourierCreds courierCreds = new CourierCreds(NAME, PASSWORD);
-        int id = sendPostRequestLogin(courierCreds).path("id");
+    public void authorizationCourierErrorTest(String login, String password) {
+        Courier courier = new Courier(login, password, null);
+        CourierApi courierApi = new CourierApi();
+        Response response = courierApi.sendPostRequestLogin(courier);
+        response.then().statusCode(SC_NOT_FOUND);
+        assertEquals("Учетная запись не найдена", response.path("message"));
     }
 
 
     private static Stream<Arguments> authorizationData() {
         return Stream.of(
-                Arguments.of("", PASSWORD, 400),
-                Arguments.of(NAME, "", 400),
-                Arguments.of(NAME, PASSWORD, 200)
+                Arguments.of("", PASSWORD),
+                Arguments.of(LOGIN, "")
 
         );
     }
 
     private static Stream<Arguments> authorizationDataError() {
         return Stream.of(
-                Arguments.of(NAME, PASSWORD, 200),
-                Arguments.of(NAME, PASSWORD_2, 404),
-                Arguments.of(NAME_2, PASSWORD, 404)
+                Arguments.of(LOGIN, PASSWORD_2),
+                Arguments.of(LOGIN_2, PASSWORD),
+                Arguments.of(LOGIN_2, PASSWORD_2)
 
         );
     }
-/*@AfterEach
-public void  tearDown(){
-        deleteCourier(NAME,PASSWORD);
-}*/
 
-    @Step("Send POST request to /api/v1/courier")
-    public Response sendPostRequest(Courier courier) {
-        return given()
-                .contentType(JSON)
-                .and()
-                .body(courier)
-                .when()
-                .post("api/v1/courier");
-    }
+    @AfterEach
+    public void tearDown() {
+        CourierApi courierApi = new CourierApi();
+        courierApi.deleteCourier(new Courier(LOGIN, PASSWORD, null));
 
-    @Step("Send POST request to /api/v1/courier/login")
-    public Response sendPostRequestLogin(CourierCreds courier) {
-        return given()
-                .contentType(JSON)
-                .and()
-                .body(courier)
-                .when()
-                .post("api/v1/courier/login");
     }
 
 
-    @Step("Send POST request to /api/v1/courier/login without login")
-    public Response sendPostRequestLogin(LoginWithoutLogin login) {
-        return given()
-                .contentType(JSON)
-                .and()
-                .body(login)
-                .when()
-                .post("api/v1/courier/login");
-    }
-
-    @Step("Send POST request to /api/v1/courier/login")
-    public String sendPostRequestId(CourierCreds courier) {
-        return given()
-                .contentType(JSON)
-                .and()
-                .body(courier)
-                .when()
-                .post("api/v1/courier/login")
-                .path("id");
-    }
-
-    @Step("Send DELET request to /api/v1/courier/:id")
-    public Response sendDeleteRequestId(String id) {
-        return given()
-                .when()
-                .delete("api/v1/courier/" + id);
-    }
-
-    @Step("Удаление курьера")
-    public void deleteCourier(String name, String password) {
-        String id = sendPostRequestId(new CourierCreds(name, password));
-        if (id != null) {
-            sendDeleteRequestId(id);
-        }
-    }
 }
